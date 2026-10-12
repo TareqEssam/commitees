@@ -2459,11 +2459,16 @@ input.bg-success {
         <div class="row g-3">
             <div class="col-md-4">
                 <label class="info-label">رقم السجل التجارى الموحد (15 رقم)</label>
-                <input type="text" class="form-control" placeholder="ادخل رقم السجل التجاري" maxlength="15" oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 15);">
+                <input type="text" class="form-control" placeholder="12345-67890-12345" maxlength="17" oninput="let val = this.value.replace(/[^0-9]/g, '').slice(0, 15); let parts = []; for (let i = 0; i < val.length; i += 5) { parts.push(val.substring(i, i + 5)); } this.value = parts.join('-');">
             </div>
             <div class="col-md-4">
                 <label class="info-label">مكتب سجل تجاري</label>
-                <select class="form-select"><option value="">-- اختر المكتب --</option><option>استثمار القاهرة</option><option>استثمار العاشر من رمضان</option><option>استثمار الاسكندرية</option></select>
+                <select class="form-select">
+                    <option value="">-- اختر المكتب --</option>
+                    <option>استثمار القاهرة</option>
+                    <option>استثمار العاشر من رمضان</option>
+                    <option>استثمار الاسكندرية</option>
+                </select>
             </div>
             <div class="col-md-4">
                 <label class="info-label">ساري حتى</label>
