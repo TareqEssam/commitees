@@ -1,4 +1,4 @@
-رقم السجل<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -1995,6 +1995,57 @@ input.bg-success {
         .chart-container-new { position: relative; height: 300px; }
         .filter-bar-new { background: white; padding: 15px; border-radius: 10px; margin-bottom: 20px; display: flex; align-items: center; gap: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .status-badge-new { padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+
+    /* ===== خريطة الشركات - Companies Map ===== */
+    .companies-map-wrapper { direction: rtl; }
+    .cmap-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
+    .cmap-header h3 { margin: 0; font-weight: 800; color: #1a1a2e; font-size: 1.45rem; }
+    .cmap-subtitle { color: #6c757d; margin: 4px 0 0; font-size: 0.92rem; }
+    .cmap-header-actions { display: flex; gap: 8px; }
+    .cmap-kpi-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
+    .cmap-kpi { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #fff; border-radius: 12px; padding: 14px 12px; text-align: center; box-shadow: 0 4px 15px rgba(26,26,46,0.25); }
+    .cmap-kpi-val { display: block; font-size: 1.5rem; font-weight: 800; line-height: 1.2; }
+    .cmap-kpi-label { font-size: 0.75rem; opacity: 0.8; }
+    .cmap-main-layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; min-height: 620px; }
+    .cmap-filters-panel { background: #fff; border-radius: 14px; padding: 18px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); overflow-y: auto; max-height: 680px; }
+    .cmap-filters-panel h5 { font-weight: 700; margin-bottom: 14px; color: #1a1a2e; font-size: 1rem; }
+    .cmap-filter-group { margin-bottom: 12px; }
+    .cmap-filter-group label { font-size: 0.8rem; font-weight: 600; color: #555; margin-bottom: 4px; display: block; }
+    .cmap-legend { margin-top: 18px; padding-top: 14px; border-top: 1px solid #eee; }
+    .cmap-legend h6 { font-size: 0.85rem; font-weight: 700; margin-bottom: 10px; }
+    .cmap-legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.8rem; }
+    .cmap-legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .cmap-map-area { position: relative; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.08); background: #e8eef5; }
+    #companies-egypt-map { width: 100%; height: 680px; }
+    .cmap-map-overlay-info { position: absolute; bottom: 12px; left: 12px; right: 12px; background: rgba(26,26,46,0.85); color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 0.8rem; z-index: 1000; pointer-events: none; text-align: center; }
+    .cmap-marker-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; }
+    .cmap-cluster-wrapper { background: transparent !important; }
+    .cmap-cluster { background: linear-gradient(135deg, #0d6efd, #0a58ca); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; box-shadow: 0 2px 8px rgba(13,110,253,0.45); border: 3px solid #fff; }
+    .cmap-cluster-small { width: 36px; height: 36px; font-size: 0.85rem; }
+    .cmap-cluster-medium { width: 44px; height: 44px; font-size: 0.95rem; }
+    .cmap-cluster-large { width: 54px; height: 54px; font-size: 1.05rem; }
+    .cmap-tooltip { font-family: Tajawal, sans-serif; min-width: 200px; }
+    .cmap-tt-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 6px; color: #1a1a2e; }
+    .cmap-tt-row { font-size: 0.82rem; margin-bottom: 3px; color: #444; }
+    .cmap-tt-row i { width: 16px; color: #0d6efd; }
+    .cmap-tt-coords { font-size: 0.72rem; color: #888; margin-top: 6px; font-family: monospace; }
+    .cmap-popup { font-family: Tajawal, sans-serif; }
+    .cmap-popup-table { width: 100%; font-size: 0.85rem; }
+    .cmap-popup-table td { padding: 3px 6px; vertical-align: top; }
+    .cmap-popup-table td:first-child { color: #888; white-space: nowrap; width: 110px; }
+    .cmap-detail-card { background: #fff; border-radius: 14px; padding: 20px; margin-top: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); position: relative; border-right: 5px solid #0d6efd; }
+    .cmap-detail-close { position: absolute; top: 12px; left: 12px; background: #f1f1f1; border: none; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; }
+    .cmap-detail-coords { background: #f8f9fa; border-radius: 10px; padding: 14px; height: 100%; }
+    .cmap-detail-coords code { font-size: 0.9rem; color: #0d6efd; }
+    @media (max-width: 992px) {
+        .cmap-main-layout { grid-template-columns: 1fr; }
+        .cmap-kpi-strip { grid-template-columns: repeat(3, 1fr); }
+        #companies-egypt-map { height: 480px; }
+        .cmap-filters-panel { max-height: none; }
+    }
+    @media (max-width: 576px) {
+        .cmap-kpi-strip { grid-template-columns: repeat(2, 1fr); }
+    }
     </style>
     </head>
 <body>
@@ -2018,6 +2069,7 @@ input.bg-success {
         <a href="#" class="sidebar-link active" onclick="showAdminSection('bi-reports', this)"><i class="fas fa-chart-line"></i> التقارير والرسوم البيانية</a>
         <a href="#" class="sidebar-link" onclick="showAdminSection('bi-add', this)"><i class="fas fa-plus-circle"></i> إضافة نشاط جديد</a>
         <a href="#" class="sidebar-link" onclick="showAdminSection('bi-edit', this)"><i class="fas fa-edit"></i> تعديل الأنشطة</a>
+        <a href="#" class="sidebar-link" onclick="showAdminSection('bi-companies-map', this)"><i class="fas fa-map-marked-alt"></i> خريطة الشركات</a>
         <a href="#" class="sidebar-link" onclick="showAdminSection('bi-settings', this)"><i class="fas fa-cog"></i> إعدادات النظام</a>
     </div>
     
@@ -2194,6 +2246,11 @@ input.bg-success {
                     </table>
                 </div>
             </div>
+        </div>
+
+        <!-- قسم خريطة الشركات -->
+        <div id="bi-companies-map" class="admin-section" style="display:none;">
+            <!-- سيتم بناؤه ديناميكياً بواسطة companies_map.js -->
         </div>
     </div>
 </div>
@@ -4535,6 +4592,14 @@ input.bg-success {
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
         crossorigin=""></script>
+<!-- Leaflet MarkerCluster -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+<!-- بيانات وخريطة الشركات -->
+<script src="js/companies_map_data.js"></script>
+<script src="js/companies_map.js"></script>
 
 </body>
 </html>
