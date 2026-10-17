@@ -1880,17 +1880,31 @@ input.bg-success {
     .badge-licensed { background: #dff9fb; color: #0984e3; }
     .badge-pending { background: #fff5f5; color: #e84118; }
     
+    /* زر إغلاق لوحة التحكم — داخل الشريط الجانبي تحت إعدادات النظام */
     .btn-close-admin {
-        position: fixed;
-        top: 20px;
-        left: 20px;
-        background: var(--admin-danger);
+        display: block;
+        width: calc(100% - 30px);
+        margin: 20px 15px 10px;
+        background: linear-gradient(180deg, #b91c1c, #991b1b);
         color: white;
         border: none;
-        padding: 10px 20px;
         border-radius: 10px;
+        padding: 14px 20px;
         cursor: pointer;
-        z-index: 100000;
+        font-weight: 800;
+        font-size: 14px;
+        text-align: center;
+        box-shadow: 0 4px 12px rgba(185, 28, 28, 0.3);
+        transition: background .2s, transform .2s, box-shadow .2s;
+    }
+    .btn-close-admin i {
+        margin-left: 8px;
+        font-size: 14px;
+    }
+    .btn-close-admin:hover {
+        background: linear-gradient(180deg, #dc2626, #b91c1c);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(220, 38, 38, 0.4);
     }
 
 
@@ -1990,9 +2004,26 @@ input.bg-success {
         .kpi-card-new h3 { font-size: 1.8rem; font-weight: 800; margin: 5px 0; }
         .kpi-card-new p { color: #6c757d; font-size: 0.9rem; margin: 0; }
         .charts-grid-new { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; }
-        .chart-card-new { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-        .chart-card-new h5 { font-weight: 700; margin-bottom: 20px; color: #333; border-bottom: 2px solid #f0f2f5; padding-bottom: 10px; }
-        .chart-container-new { position: relative; height: 300px; }
+        .chart-card-new {
+            background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+            padding: 22px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(15, 23, 42, 0.08);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+        .chart-card-new::before {
+            content: '';
+            position: absolute; top: 0; right: 0; left: 0; height: 3px;
+            background: linear-gradient(90deg, #0d9488, #0ea5e9, #8b5cf6);
+        }
+        .chart-card-new h5 {
+            font-weight: 800; margin-bottom: 16px; color: #0f172a;
+            border-bottom: 1px solid #e2e8f0; padding-bottom: 12px;
+            display: flex; align-items: center; gap: 8px; font-size: 0.95rem;
+        }
+        .chart-container-new { position: relative; height: 320px; }
         .filter-bar-new { background: white; padding: 15px; border-radius: 10px; margin-bottom: 20px; display: flex; align-items: center; gap: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .status-badge-new { padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
 
@@ -2018,6 +2049,84 @@ input.bg-success {
     .cmap-map-area { position: relative; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.08); background: #e8eef5; }
     #companies-egypt-map { width: 100%; height: 680px; }
     .cmap-map-overlay-info { position: absolute; bottom: 12px; left: 12px; right: 12px; background: rgba(26,26,46,0.85); color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 0.8rem; z-index: 1000; pointer-events: none; text-align: center; }
+    /* مؤشر تحميل احترافي للخريطة */
+    .cmap-loading {
+        position: absolute; inset: 0; z-index: 1100;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f766e 100%);
+        color: #fff; transition: opacity .4s ease;
+    }
+    .cmap-loading.hide { opacity: 0; pointer-events: none; }
+    .cmap-loading-spinner {
+        width: 56px; height: 56px; border: 4px solid rgba(255,255,255,.2);
+        border-top-color: #2dd4bf; border-radius: 50%;
+        animation: cmap-spin 0.85s linear infinite; margin-bottom: 16px;
+    }
+    @keyframes cmap-spin { to { transform: rotate(360deg); } }
+    .cmap-loading-title { font-weight: 800; font-size: 1.1rem; margin-bottom: 6px; }
+    .cmap-loading-sub { font-size: 0.85rem; opacity: .8; margin-bottom: 14px; }
+    .cmap-loading-bar {
+        width: min(280px, 70%); height: 6px; background: rgba(255,255,255,.15);
+        border-radius: 99px; overflow: hidden;
+    }
+    .cmap-loading-bar > span {
+        display: block; height: 100%; width: 35%;
+        background: linear-gradient(90deg, #2dd4bf, #38bdf8);
+        border-radius: 99px; animation: cmap-bar 1.4s ease-in-out infinite;
+    }
+    @keyframes cmap-bar {
+        0% { transform: translateX(-100%); }
+        50% { transform: translateX(180%); }
+        100% { transform: translateX(-100%); }
+    }
+    /* وضع ملء الشاشة للخريطة — الخريطة فقط بدون اللوحة الجانبية */
+    .companies-map-wrapper.cmap-fullscreen {
+        position: fixed; inset: 0; z-index: 99999;
+        background: #0f172a; padding: 10px 12px 12px;
+        overflow: hidden; margin: 0;
+        display: flex; flex-direction: column;
+    }
+    .companies-map-wrapper.cmap-fullscreen .cmap-header {
+        flex-shrink: 0; margin-bottom: 8px;
+    }
+    .companies-map-wrapper.cmap-fullscreen .cmap-header h3 { color: #fff; }
+    .companies-map-wrapper.cmap-fullscreen .cmap-subtitle { color: rgba(255,255,255,.7); }
+    .companies-map-wrapper.cmap-fullscreen .cmap-kpi-strip {
+        display: none;
+    }
+    .companies-map-wrapper.cmap-fullscreen .cmap-main-layout {
+        grid-template-columns: 1fr;
+        flex: 1;
+        min-height: 0;
+        gap: 0;
+    }
+    .companies-map-wrapper.cmap-fullscreen .cmap-filters-panel {
+        display: none !important;
+    }
+    .companies-map-wrapper.cmap-fullscreen .cmap-map-area {
+        height: 100%;
+        border-radius: 12px;
+    }
+    .companies-map-wrapper.cmap-fullscreen #companies-egypt-map {
+        height: 100% !important;
+        min-height: calc(100vh - 90px);
+    }
+    .companies-map-wrapper.cmap-fullscreen .cmap-detail-card {
+        position: absolute;
+        bottom: 16px;
+        left: 16px;
+        right: 16px;
+        z-index: 1200;
+        max-height: 42vh;
+        overflow: auto;
+        margin: 0;
+    }
+    .cmap-fs-btn {
+        border: none; border-radius: 10px; padding: 7px 12px; font-size: 13px;
+        font-weight: 700; cursor: pointer; background: #0f766e; color: #fff;
+        display: inline-flex; align-items: center; gap: 6px;
+    }
+    .cmap-fs-btn:hover { background: #0d9488; }
     .cmap-marker-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; }
     .cmap-cluster-wrapper { background: transparent !important; }
     .cmap-cluster { background: linear-gradient(135deg, #0d6efd, #0a58ca); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; box-shadow: 0 2px 8px rgba(13,110,253,0.45); border: 3px solid #fff; }
@@ -2033,8 +2142,19 @@ input.bg-success {
     .cmap-popup-table { width: 100%; font-size: 0.85rem; }
     .cmap-popup-table td { padding: 3px 6px; vertical-align: top; }
     .cmap-popup-table td:first-child { color: #888; white-space: nowrap; width: 110px; }
-    .cmap-detail-card { background: #fff; border-radius: 14px; padding: 20px; margin-top: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); position: relative; border-right: 5px solid #0d6efd; }
-    .cmap-detail-close { position: absolute; top: 12px; left: 12px; background: #f1f1f1; border: none; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; }
+    .cmap-detail-card {
+        background: #fff; border-radius: 14px; padding: 20px 20px 20px 52px; margin-top: 16px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08); position: relative; border-right: 5px solid #0d6efd;
+    }
+    /* زر إغلاق ثابت على جانب اللوحة */
+    .cmap-detail-close {
+        position: absolute; top: 50%; left: 10px; transform: translateY(-50%);
+        background: #0f172a; color: #fff; border: none; width: 36px; height: 36px;
+        border-radius: 50%; cursor: pointer; z-index: 5;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 4px 12px rgba(15,23,42,.25); transition: background .2s, transform .15s;
+    }
+    .cmap-detail-close:hover { background: #dc2626; transform: translateY(-50%) scale(1.06); }
     .cmap-detail-coords { background: #f8f9fa; border-radius: 10px; padding: 14px; height: 100%; }
     .cmap-detail-coords code { font-size: 0.9rem; color: #0d6efd; }
     @media (max-width: 992px) {
@@ -2050,9 +2170,6 @@ input.bg-success {
     </head>
 <body>
 <div id="adminDashboardBI" class="admin-dashboard-wrapper">
-    <!-- زر إغلاق لوحة التحكم (القديم - يسار) -->
-    <button class="btn-close-admin" onclick="closeAdminBI()"><i class="fas fa-times"></i> إغلاق لوحة التحكم</button>
-    
     <!-- الزر الجديد: يظهر فقط في الموبايل (d-md-none) لفتح القائمة الجانبية (يمين) -->
     <button id="mobileMenuBtn" class="btn btn-primary d-md-none" onclick="toggleAdminSidebar()" style="position: fixed; top: 20px; right: 20px; z-index: 100000; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.2);">
         <i class="fas fa-bars"></i> القائمة
@@ -2070,7 +2187,12 @@ input.bg-success {
         <a href="#" class="sidebar-link" onclick="showAdminSection('bi-add', this)"><i class="fas fa-plus-circle"></i> إضافة نشاط جديد</a>
         <a href="#" class="sidebar-link" onclick="showAdminSection('bi-edit', this)"><i class="fas fa-edit"></i> تعديل الأنشطة</a>
         <a href="#" class="sidebar-link" onclick="showAdminSection('bi-companies-map', this)"><i class="fas fa-map-marked-alt"></i> خريطة الشركات</a>
+        <a href="#" class="sidebar-link" data-csv-nav="monitor" onclick="showAdminSection('bi-seriousness-monitor', this); if(window.CompanySeriousness) CompanySeriousness.initMonitor(); return false;"><i class="fas fa-clipboard-check"></i> متابعة إثبات الجدية</a>
         <a href="#" class="sidebar-link" onclick="showAdminSection('bi-settings', this)"><i class="fas fa-cog"></i> إعدادات النظام</a>
+        <button type="button" class="btn-close-admin" onclick="closeAdminBI()" title="إغلاق لوحة التحكم">
+            <i class="fas fa-times"></i>
+            إغلاق لوحة التحكم
+        </button>
     </div>
     
     <div class="admin-main">
@@ -2094,29 +2216,29 @@ input.bg-success {
                 <div class="kpi-card-new">
                     <i class="fas fa-building"></i>
                     <p>إجمالي الشركات</p>
-                    <h3 id="kpi-total-companies">2,847</h3>
+                    <h3 id="kpi-total-companies">12,188</h3>
                     <div class="mt-2">
-                        <span class="status-badge-new bg-success-subtle text-success">جادة: 2,105</span>
-                        <span class="status-badge-new bg-danger-subtle text-danger">متوقفة: 542</span>
+                        <span class="status-badge-new bg-success-subtle text-success">عاملة: 8,088</span>
+                        <span class="status-badge-new bg-danger-subtle text-danger">متوقفة: 1,491</span>
                     </div>
                 </div>
                 <div class="kpi-card-new" style="border-top-color: #27ae60;">
                     <i class="fas fa-chart-line"></i>
-                    <p>معدل النمو</p>
-                    <h3 id="kpi-growth-rate">18.5%</h3>
-                    <p class="text-success"><i class="fas fa-arrow-up"></i> مستقر</p>
+                    <p>معدل التشغيل</p>
+                    <h3 id="kpi-growth-rate">66.4%</h3>
+                    <p class="text-success"><i class="fas fa-check-circle"></i> عاملة من الإجمالي</p>
                 </div>
                 <div class="kpi-card-new" style="border-top-color: #f39c12;">
-                    <i class="fas fa-bolt"></i>
-                    <p>استهلاك الطاقة</p>
-                    <h3 id="kpi-energy">4,250</h3>
-                    <p>ميجاوات/ساعة</p>
+                    <i class="fas fa-users"></i>
+                    <p>إجمالي العمالة</p>
+                    <h3 id="kpi-energy">2.77M</h3>
+                    <p>عامل مرتبط بالمنشآت</p>
                 </div>
                 <div class="kpi-card-new" style="border-top-color: #e74c3c;">
-                    <i class="fas fa-trash-alt"></i>
-                    <p>إجمالي المخلفات</p>
-                    <h3 id="kpi-waste">12,450</h3>
-                    <p>طن سنوياً</p>
+                    <i class="fas fa-coins"></i>
+                    <p>رأس المال العامل</p>
+                    <h3 id="kpi-waste">1.99T</h3>
+                    <p>مليون ج.م (تقديري)</p>
                 </div>
             </div>
 
@@ -2251,6 +2373,16 @@ input.bg-success {
         <!-- قسم خريطة الشركات -->
         <div id="bi-companies-map" class="admin-section" style="display:none;">
             <!-- سيتم بناؤه ديناميكياً بواسطة companies_map.js -->
+        </div>
+
+        <!-- إثبات جدية المنشأة — بوابة المستثمر / المحاسب -->
+        <div id="bi-seriousness-portal" class="admin-section" style="display:none;">
+            <!-- يُبنى بواسطة company_seriousness.js -->
+        </div>
+
+        <!-- متابعة إثبات الجدية — لوحة جلسة العرض -->
+        <div id="bi-seriousness-monitor" class="admin-section" style="display:none;">
+            <!-- يُبنى بواسطة company_seriousness.js -->
         </div>
     </div>
 </div>
@@ -4600,6 +4732,7 @@ input.bg-success {
 <!-- بيانات وخريطة الشركات -->
 <script src="js/companies_map_data.js"></script>
 <script src="js/companies_map.js"></script>
+<script src="js/company_seriousness.js"></script>
 
 </body>
 </html>
