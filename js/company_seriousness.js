@@ -2092,7 +2092,7 @@
               <br><code dir="ltr" style="background:#fef3c7;padding:1px 5px;border-radius:4px;font-size:11px">https://invoicing.eta.gov.eg/receipts/search/…/share/…</code> (إيصال)
             </p>
             <p style="margin:8px 0 0;font-size:12px;color:#b45309;line-height:1.6;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:8px 10px">
-              ⏰ <strong>تنويه:</strong> يُفضّل أن تكون الفاتورة أو الإيصال صادرة خلال آخر <strong>30 يوماً</strong> لدعم إثبات الجدية بشكل أقوى.
+              ⏰ <strong>تنويه:</strong> يجب أن تكون الفاتورة أو الإيصال صادر خلال آخر <strong>30 يوماً</strong> لدعم إثبات الجدية .
             </p>
           </div>
         </div>
