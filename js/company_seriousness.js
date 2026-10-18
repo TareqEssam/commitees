@@ -7,11 +7,23 @@
   'use strict';
 
   const ETA_ORIGIN = 'https://invoicing.eta.gov.eg';
-  const ETA_PATH_RE = /^https:\/\/invoicing\.eta\.gov\.eg\/documents\/([A-Z0-9]+)\/share\/([A-Za-z0-9]+)/i;
+  /** فاتورة إلكترونية: /documents/{uuid}/share/{token} */
+  const ETA_INVOICE_PATH_RE =
+    /^https:\/\/invoicing\.eta\.gov\.eg\/documents\/([A-Za-z0-9]+)\/share\/([A-Za-z0-9]+)/i;
+  /** إيصال إلكتروني: /receipts/search/{uuid}/share/{dateTime} (قد يليه #Total:…,IssuerRIN:…) */
+  const ETA_RECEIPT_PATH_RE =
+    /^https:\/\/invoicing\.eta\.gov\.eg\/receipts\/search\/([A-Fa-f0-9]+)\/share\/([^#\s?]+)/i;
+  /** للتوافق مع الكود القديم */
+  const ETA_PATH_RE = ETA_INVOICE_PATH_RE;
   const MAX_ATTEMPTS = 5;
+  /** عتبة حداثة المستند بالأيام (فاتورة أو إيصال) */
+  const DOC_FRESHNESS_DAYS = 30;
   /** رابط مشاركة حقيقي للاختبار السريع فقط — يُجلب من API الحي وليس من بيانات ثابتة */
   const SAMPLE_LIVE_LINK =
     'https://invoicing.eta.gov.eg/documents/J1AGP49BP71M16RA90HPTJ4M10/share/CSC30PT8RBW7S1EJA0HPTJ4M10h8Koty1791633343';
+  const SAMPLE_LIVE_RECEIPT =
+    'https://invoicing.eta.gov.eg/receipts/search/589897ED88629B690C587896AF3B6EBA0C19BE729A48AC0975365B9A6B898089/share/2026-10-09T21:34:23+03:00#Total:552.00,IssuerRIN:489137156';
+  const REMINDER_STORAGE_KEY = 'csv_sample_reminder_v1';
 
   /** حالة الواجهة في التبويب الحالي */
   const sessionStore = {
@@ -106,9 +118,9 @@
     return shorter.length >= 4 && longer.indexOf(shorter) !== -1;
   }
 
-  /** تحليل ذكي لتاريخ الفاتورة: هل مرّ عليها عام أو أكثر؟ */
-  function isInvoiceOld(d, yearsThreshold) {
-    yearsThreshold = yearsThreshold || 1;
+  /** تحليل ذكي لتاريخ المستند: هل مرّ عليه عدد أيام محدد؟ (افتراضي 30 يوماً) */
+  function isInvoiceOld(d, daysThreshold) {
+    daysThreshold = daysThreshold == null ? DOC_FRESHNESS_DAYS : daysThreshold;
     const raw = invoiceDateRaw(d);
     if (!raw) return false;
     try {
@@ -116,10 +128,23 @@
       if (isNaN(invDate.getTime())) return false;
       const now = new Date();
       const diffMs = now.getTime() - invDate.getTime();
-      const years = diffMs / (365.25 * 24 * 60 * 60 * 1000);
-      return years >= yearsThreshold;
+      const days = diffMs / (24 * 60 * 60 * 1000);
+      return days >= daysThreshold;
     } catch (_) {
       return false;
+    }
+  }
+
+  /** عدد الأيام منذ إصدار المستند (null إن تعذّر) */
+  function documentAgeDays(d) {
+    const raw = invoiceDateRaw(d);
+    if (!raw) return null;
+    try {
+      const invDate = new Date(raw);
+      if (isNaN(invDate.getTime())) return null;
+      return (Date.now() - invDate.getTime()) / (24 * 60 * 60 * 1000);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -214,7 +239,7 @@
   function itemLinesHtml(d) {
     const lines = normalizeInvoiceLines(d);
     if (!lines.length) {
-      return '<div style="font-size:12px;color:#64748b;margin-top:6px">لا توجد أصناف مسجّلة في الفاتورة</div>';
+      return '<div style="font-size:12px;color:#64748b;margin-top:6px">لا توجد أصناف مسجّلة في المستند</div>';
     }
     return (
       '<div style="margin-top:8px;font-size:12px">' +
@@ -433,11 +458,20 @@
     });
   }
 
+  /** يكتشف نوع المستند من الرابط: invoice | receipt | null */
+  function detectDocKind(url) {
+    const val = String(url || '').trim();
+    if (!val) return null;
+    if (ETA_RECEIPT_PATH_RE.test(val)) return 'receipt';
+    if (ETA_INVOICE_PATH_RE.test(val)) return 'invoice';
+    return null;
+  }
+
   function isValidEtaLink(url) {
     try {
-      const u = new URL(url);
+      const u = new URL(String(url).split('#')[0]);
       if (u.origin !== ETA_ORIGIN) return false;
-      return ETA_PATH_RE.test(url);
+      return detectDocKind(url) !== null;
     } catch {
       return false;
     }
@@ -447,23 +481,26 @@
   function explainInvalidEtaLink(url) {
     const val = String(url || '').trim();
     let detail =
-      'يُقبل فقط <strong>رابط المشاركة الرسمية</strong> لفاتورة إلكترونية من منظومة الفواتير الإلكترونية التابعة لمصلحة الضرائب.';
+      'يُقبل فقط <strong>رابط المشاركة الرسمية</strong> لفاتورة أو إيصال إلكتروني من منظومة الفواتير والإيصالات الإلكترونية التابعة لمصلحة الضرائب.';
     if (!val) {
-      detail = 'الحقل فارغ. يُرجى لصق رابط مشاركة فاتورة صالح.';
+      detail = 'الحقل فارغ. يُرجى لصق رابط مشاركة فاتورة أو إيصال صالح.';
     } else if (!/^https?:\/\//i.test(val)) {
       detail =
         'النص المُدخل ليس رابطاً كاملاً. يجب أن يبدأ بـ <code dir="ltr">https://</code>';
     } else {
       try {
-        const u = new URL(val);
+        const u = new URL(val.split('#')[0]);
         if (u.origin !== ETA_ORIGIN) {
           detail =
             'النطاق غير مقبول.<br>المُدخل: <code dir="ltr" style="word-break:break-all">' +
             u.origin +
             '</code><br>المطلوب حصراً: <strong dir="ltr">https://invoicing.eta.gov.eg</strong>';
-        } else if (!ETA_PATH_RE.test(val)) {
+        } else if (!detectDocKind(val)) {
           detail =
-            'الرابط من النطاق الصحيح لكن <strong>مساره غير مكتمل</strong>.<br>الصيغة المطلوبة:<br><code dir="ltr" style="font-size:11px;word-break:break-all">https://invoicing.eta.gov.eg/documents/…/share/…</code>';
+            'الرابط من النطاق الصحيح لكن <strong>مساره غير مكتمل أو غير مدعوم</strong>.<br>' +
+            'الصيغ المقبولة:<br>' +
+            '<code dir="ltr" style="font-size:11px;word-break:break-all">https://invoicing.eta.gov.eg/documents/…/share/…</code> (فاتورة)<br>' +
+            '<code dir="ltr" style="font-size:11px;word-break:break-all">https://invoicing.eta.gov.eg/receipts/search/…/share/…</code> (إيصال)';
         }
       } catch (_) {
         detail = 'تعذّر قراءة الرابط. تأكد من نسخه كاملاً دون حذف أي جزء منه.';
@@ -475,15 +512,27 @@
       '<p style="margin:0 0 10px">' +
       detail +
       '</p>' +
-      '<p style="margin:0;font-size:12px;color:#64748b">يمكنك: لصق رابط المشاركة من بوابة الفاتورة الإلكترونية، أو مسح رمز QR الظاهر على الفاتورة باستخدام زر الكاميرا.</p>' +
+      '<p style="margin:0;font-size:12px;color:#64748b">يمكنك: لصق رابط المشاركة من بوابة الفاتورة/الإيصال الإلكترونية، أو مسح رمز QR الظاهر باستخدام زر الكاميرا. يُفضّل ألا يتجاوز عمر المستند 30 يوماً.</p>' +
       '</div>'
     );
   }
 
   function parseShareUrl(url) {
-    const m = url.match(ETA_PATH_RE);
-    if (!m) return null;
-    return { uuid: m[1], token: m[2] };
+    const kind = detectDocKind(url);
+    if (kind === 'invoice') {
+      const m = String(url).match(ETA_INVOICE_PATH_RE);
+      if (!m) return null;
+      return { kind: 'invoice', uuid: m[1], token: m[2] };
+    }
+    if (kind === 'receipt') {
+      const m = String(url).match(ETA_RECEIPT_PATH_RE);
+      if (!m) return null;
+      let dateTime = decodeURIComponent(m[2]);
+      // إزالة أي استعلام متبقٍ
+      dateTime = dateTime.split('?')[0];
+      return { kind: 'receipt', uuid: m[1], dateTimeIssued: dateTime };
+    }
+    return null;
   }
 
   function ensureInvoiceLinesOnData(data) {
@@ -494,30 +543,91 @@
   }
 
   /**
-   * استخلاص حي فقط من واجهة المشاركة العامة للهيئة.
-   * لا توجد بيانات محاكاة — عند الفشل يُرجع خطأ واضح للمستخدم.
+   * تطبيع بيانات الإيصال إلى شكل موحّد يشبه الفاتورة لتسهيل التحليل والعرض.
+   * seller → issuer ، buyer → receiver ، itemData → invoiceLines
    */
-  async function fetchDocument(url) {
-    const parts = parseShareUrl(url);
-    if (!parts) {
-      const err = new Error('INVALID_URL');
-      err.code = 'INVALID_URL';
-      throw err;
+  function normalizeReceiptToUnified(raw) {
+    if (!raw || typeof raw !== 'object') return raw;
+    const r = raw.receipt || raw;
+    const seller = r.seller || {};
+    const buyer = r.buyer || {};
+    const docType = r.documentType || {};
+    const items = Array.isArray(r.itemData) ? r.itemData : [];
+
+    const lines = items.map(function (ln) {
+      return {
+        description: ln.description || ln.itemCodeNameAr || ln.itemCodeName || '',
+        itemCode: ln.itemCode || ln.internalCode || '',
+        quantity: ln.quantity,
+        unitValue: ln.unitPrice,
+        salesTotal: ln.total != null ? ln.total : ln.totalSale,
+        netTotal: ln.netSale,
+        total: ln.total,
+        unitType: ln.unitType,
+        unitTypeName: ln.unitTypeName
+      };
+    });
+
+    const statusRaw = (r.status || '').toString();
+    const status =
+      statusRaw.toLowerCase() === 'valid' || statusRaw === 'Valid'
+        ? 'Valid'
+        : statusRaw || 'Unknown';
+
+    return {
+      _docKind: 'receipt',
+      uuid: r.uuid || '',
+      longId: r.longId || '',
+      receiptNumber: r.receiptNumber || '',
+      dateTimeIssued: r.dateTimeIssued || raw.dateTimeIssued || '',
+      dateTimeReceived: r.dateTimeReceived || raw.dateTimeReceived || '',
+      totalAmount: r.totalAmount != null ? r.totalAmount : 0,
+      totalSales: r.totalSales,
+      netAmount: r.netAmount,
+      currency: r.currency || 'EGP',
+      status: status,
+      statusReason: r.statusReason || '',
+      issuer: {
+        id: seller.sellerId || seller.id || '',
+        name: seller.sellerName || seller.name || '',
+        type: 'B',
+        address: seller.branchAddress || null
+      },
+      receiver: {
+        id: buyer.buyerId || buyer.id || '',
+        name: buyer.buyerName || buyer.name || '',
+        type: buyer.type || ''
+      },
+      invoiceLines: lines,
+      documentType: {
+        name: docType.receiptTypeNameAr || docType.receiptTypeName || 'إيصال',
+        namePrimaryLang: docType.receiptTypeName || '',
+        nameSecondaryLang: docType.receiptTypeNameAr || '',
+        receiptType: docType.receiptType || '',
+        receiptTypeBase: docType.receiptTypeBase || ''
+      },
+      submissionChannel: raw.submissionChannel || '',
+      taxTotals: r.taxTotals || [],
+      // احتفاظ بالأصل للرجوع عند الحاجة
+      _rawReceipt: raw
+    };
+  }
+
+  function markInvoiceKind(data) {
+    if (data && typeof data === 'object' && !data._docKind) {
+      data._docKind = 'invoice';
     }
+    return data;
+  }
 
-    const api =
-      'https://api-portal.invoicing.eta.gov.eg/api/v1/public/documents/' +
-      encodeURIComponent(parts.uuid) +
-      '/share?token=' +
-      encodeURIComponent(parts.token) +
-      '&documentLinesLimit=100';
-
+  async function fetchJsonWithTimeout(api, timeoutMs) {
+    timeoutMs = timeoutMs || 15000;
     let res;
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(function () {
         ctrl.abort();
-      }, 15000);
+      }, timeoutMs);
       res = await fetch(api, {
         signal: ctrl.signal,
         headers: { Accept: 'application/json' },
@@ -558,31 +668,72 @@
       err.code = 'EMPTY';
       throw err;
     }
+    return raw;
+  }
 
-    const data = ensureInvoiceLinesOnData(raw);
-    return { source: 'live', data: data, url: url };
+  /**
+   * استخلاص حي فقط من واجهة المشاركة العامة للهيئة.
+   * يدعم الفواتير (/documents/…/share/…) والإيصالات (/receipts/search/…/share/…)
+   * لا توجد بيانات محاكاة — عند الفشل يُرجع خطأ واضح للمستخدم.
+   */
+  async function fetchDocument(url) {
+    const parts = parseShareUrl(url);
+    if (!parts) {
+      const err = new Error('INVALID_URL');
+      err.code = 'INVALID_URL';
+      throw err;
+    }
+
+    if (parts.kind === 'receipt') {
+      // واجهة الإيصالات العامة (بدون مصادقة)
+      const api =
+        'https://api-portal.invoicing.eta.gov.eg/api/v1/receipts/' +
+        encodeURIComponent(parts.uuid) +
+        '/share?dateTimeIssued=' +
+        encodeURIComponent(parts.dateTimeIssued);
+
+      const raw = await fetchJsonWithTimeout(api, 15000);
+      const data = normalizeReceiptToUnified(raw);
+      return { source: 'live', data: data, url: url, docKind: 'receipt' };
+    }
+
+    // فاتورة إلكترونية
+    const api =
+      'https://api-portal.invoicing.eta.gov.eg/api/v1/public/documents/' +
+      encodeURIComponent(parts.uuid) +
+      '/share?token=' +
+      encodeURIComponent(parts.token) +
+      '&documentLinesLimit=100';
+
+    const raw = await fetchJsonWithTimeout(api, 15000);
+    const data = markInvoiceKind(ensureInvoiceLinesOnData(raw));
+    return { source: 'live', data: data, url: url, docKind: 'invoice' };
   }
 
   function explainFetchError(code) {
     if (code === 'INVALID_URL') {
-      return 'صيغة رابط المشاركة غير صحيحة.';
+      return 'صيغة رابط المشاركة غير صحيحة (فاتورة أو إيصال).';
     }
     if (code === 'NOT_FOUND') {
-      return 'الفاتورة غير موجودة أو انتهت صلاحية رابط المشاركة.';
+      return 'المستند غير موجود أو انتهت صلاحية رابط المشاركة.';
     }
     if (code === 'TIMEOUT') {
       return 'انتهت مهلة الاتصال بواجهة الهيئة. أعد المحاولة.';
     }
     if (code === 'NETWORK') {
-      return 'تعذّر الاتصال بواجهة الفواتير الإلكترونية. تحقق من الإنترنت أو أعد المحاولة لاحقاً.';
+      return 'تعذّر الاتصال بواجهة الفواتير والإيصالات الإلكترونية. تحقق من الإنترنت أو أعد المحاولة لاحقاً.';
     }
     if (code === 'HTTP') {
-      return 'انتهت فترة صلاحية استرجاع المستند أو أن بيانات المستند غير صالحة - يرجي اختيار فواتير صالحة.';
+      return 'انتهت فترة صلاحية استرجاع المستند أو أن بيانات المستند غير صالحة — يُرجى اختيار فواتير/إيصالات صالحة.';
     }
     if (code === 'BAD_JSON' || code === 'EMPTY') {
       return 'استجابة غير متوقعة من واجهة الهيئة.';
     }
-    return 'تعذّر استخلاص بيانات الفاتورة من الرابط.';
+    return 'تعذّر استخلاص بيانات المستند من الرابط.';
+  }
+
+  function docKindLabel(kind) {
+    return kind === 'receipt' ? 'إيصال' : 'فاتورة';
   }
 
   /**
@@ -605,6 +756,12 @@
     let nameMismatchCount = 0;
     let sideMismatchCount = 0;
     let oldInvoiceCount = 0;
+    let invoiceCount = 0;
+    let receiptCount = 0;
+    let salesInvoiceCount = 0;
+    let salesReceiptCount = 0;
+    let purchaseInvoiceCount = 0;
+    let purchaseReceiptCount = 0;
     const ids = new Set();
     const names = new Set();
     const fraudFlags = [];
@@ -616,19 +773,29 @@
       const isSales = side === 'مبيعات';
       const isPurchase = side === 'مشتريات';
       const amount = Number(d.totalAmount) || 0;
+      const kind = d._docKind || it.docKind || 'invoice';
+      const isReceipt = kind === 'receipt';
+      const kindWord = isReceipt ? 'الإيصال' : 'الفاتورة';
 
       if (d.status === 'Valid') validCount++;
       totalAmount += amount;
 
+      if (isReceipt) receiptCount++;
+      else invoiceCount++;
+
       if (isSales) {
         salesCount++;
         salesAmount += amount;
+        if (isReceipt) salesReceiptCount++;
+        else salesInvoiceCount++;
       } else if (isPurchase) {
         purchasesCount++;
         purchasesAmount += amount;
+        if (isReceipt) purchaseReceiptCount++;
+        else purchaseInvoiceCount++;
       }
 
-      if (isInvoiceOld(d, 1)) oldInvoiceCount++;
+      if (isInvoiceOld(d, DOC_FRESHNESS_DAYS)) oldInvoiceCount++;
 
       const issuerId = d.issuer?.id ? digitsOnly(d.issuer.id) : '';
       const receiverId = d.receiver?.id ? digitsOnly(d.receiver.id) : '';
@@ -668,8 +835,11 @@
         fraudFlags.push({
           type: 'id',
           side: side,
+          docKind: kind,
           message:
-            'عدم تطابق رقم التسجيل (البطاقة الضريبية): في الفاتورة (' +
+            'عدم تطابق رقم التسجيل (البطاقة الضريبية): في ' +
+            kindWord +
+            ' (' +
             (expectedPartyId || '—') +
             ') بينما المسجّل للمنشأة (' +
             target +
@@ -682,8 +852,11 @@
         fraudFlags.push({
           type: 'name',
           side: side,
+          docKind: kind,
           message:
-            'عدم تطابق اسم المنشأة: في الفاتورة («' +
+            'عدم تطابق اسم المنشأة: في ' +
+            kindWord +
+            ' («' +
             (expectedPartyName || '—') +
             '») بينما المسجّل («' +
             (companyName || '—') +
@@ -692,7 +865,7 @@
         });
       }
 
-      // مطابقة كاملة للهوية (رقم + اسم) حسب نوع الفاتورة
+      // مطابقة كاملة للهوية (رقم + اسم) حسب نوع المعاملة
       if (idMatches && (nameMatches || !companyNorm)) {
         matchCount++;
       } else if (target && (issuerId === target || receiverId === target) && !idMatches) {
@@ -701,8 +874,11 @@
         fraudFlags.push({
           type: 'side',
           side: side,
+          docKind: kind,
           message:
-            'الرقم الضريبي موجود لكن في الطرف غير المتوقع لنوع الفاتورة (' +
+            'الرقم الضريبي موجود لكن في الطرف غير المتوقع لنوع ' +
+            kindWord +
+            ' (' +
             side +
             '). يُتوقع أن يكون المنشأة هي ' +
             expectedRoleLabel
@@ -722,17 +898,17 @@
       classification = 'weak';
       label = 'عيّنة غير مكتملة';
       reason =
-        'لم يُستخرج أي فاتورة موثقة من الروابط المقدّمة. تعذّر بناء مؤشر جدية.';
+        'لم يُستخرج أي مستند موثق (فاتورة أو إيصال) من الروابط المقدّمة. تعذّر بناء مؤشر جدية.';
     } else if (hasFraud && matchCount === 0) {
       classification = 'weak';
       label = 'مؤشرات عدم اتساق';
       reason =
-        'اكتُشفت حالات عدم تطابق في اسم المنشأة أو رقم التسجيل (البطاقة الضريبية) أو طرف الفاتورة. العيّنة لا تدعم إثبات الجدية .';
+        'اكتُشفت حالات عدم تطابق في اسم المنشأة أو رقم التسجيل (البطاقة الضريبية) أو طرف المستند (فاتورة/إيصال). العيّنة لا تدعم إثبات الجدية.';
     } else if (target && matchCount === 0) {
       classification = 'weak';
       label = 'عدم اتساق الهوية';
       reason =
-        'الفواتير المستخرجة غير مرتبطة برقم المنشأة المستهدف أو اسمها. العيّنة لا تدعم إثبات الجدية.';
+        'المستندات المستخرجة (فواتير/إيصالات) غير مرتبطة برقم المنشأة المستهدف أو اسمها. العيّنة لا تدعم إثبات الجدية.';
     } else if (
       ratioValid >= 0.8 &&
       matchCount >= 1 &&
@@ -742,16 +918,16 @@
       classification = 'strong';
       label = 'مؤشرات جدية إيجابية';
       reason =
-        'اتساق كامل لهوية المنشأة (الاسم + رقم التسجيل) مع نوع المعاملة (مبيعات/مشتريات) وفواتير رسمية صالحة. مؤشر أوّلي لإثبات الجدية — وليس اعتماداً نهائياً.';
+        'اتساق كامل لهوية المنشأة (الاسم + رقم التسجيل) مع نوع المعاملة (مبيعات/مشتريات) ومستندات رسمية صالحة (فواتير وإيصالات). مؤشر أوّلي لإثبات الجدية — وليس اعتماداً نهائياً.';
     } else if (hasFraud && matchCount > 0) {
       classification = 'review';
       label = 'تحتاج مراجعة دقيقة';
       reason =
-        'يوجد تطابق جزئي لكن مع مؤشرات عدم اتساق في الاسم أو الرقم أو طرف الفاتورة. يُنصح بالتأكد من روابط الفواتير المُدحلة.';
+        'يوجد تطابق جزئي لكن مع مؤشرات عدم اتساق في الاسم أو الرقم أو طرف المستند. يُنصح بالتأكد من روابط الفواتير والإيصالات المُدخلة.';
     } else if (ratioValid < 0.5) {
       classification = 'weak';
       label = 'مؤشرات ضعف في العيّنة';
-      reason = 'نسبة الفواتير غير الصالحة مرتفعة ضمن العيّنة المقدّمة.';
+      reason = 'نسبة المستندات غير الصالحة مرتفعة ضمن العيّنة المقدّمة.';
     } else {
       classification = 'review';
       label = 'تحتاج استكمال';
@@ -759,13 +935,15 @@
         'النتائج مختلطة. يُنصح بتوسيع العيّنة أو إرفاق مستندات داعمة إضافية.';
     }
 
-    // نصيحة التواريخ
+    // نصيحة التواريخ — عتبة 30 يوماً
     let dateAdvice = '';
     if (oldInvoiceCount > 0) {
       dateAdvice =
         'تنبيه ذكي: يوجد ' +
         oldInvoiceCount +
-        ' فاتورة مرّ عليها عام أو أكثر. يُنصح بتقديم فواتير عن العام الحالي لدعم إثبات الجدية بشكل أقوى.';
+        ' مستند (فاتورة/إيصال) مرّ عليه أكثر من ' +
+        DOC_FRESHNESS_DAYS +
+        ' يوماً. يُفضّل تقديم مستندات حديثة (خلال آخر 30 يوماً) لدعم إثبات الجدية بشكل أقوى.';
     }
 
     return {
@@ -777,6 +955,12 @@
       salesAmount,
       purchasesCount,
       purchasesAmount,
+      invoiceCount,
+      receiptCount,
+      salesInvoiceCount,
+      salesReceiptCount,
+      purchaseInvoiceCount,
+      purchaseReceiptCount,
       idMismatchCount,
       nameMismatchCount,
       sideMismatchCount,
@@ -849,6 +1033,8 @@
       .csv-tag { font-size: 10px; padding: 3px 10px; border-radius: 6px; font-weight: 700; letter-spacing: 0.3px; }
       .csv-tag.in { background: linear-gradient(135deg,#dbeafe,#bfdbfe); color: #1e40af; border: 1px solid #93c5fd; }
       .csv-tag.out { background: linear-gradient(135deg,#dcfce7,#bbf7d0); color: #166534; border: 1px solid #86efac; }
+      .csv-tag.invoice { background: linear-gradient(135deg,#e0e7ff,#c7d2fe); color: #3730a3; border: 1px solid #a5b4fc; }
+      .csv-tag.receipt { background: linear-gradient(135deg,#fef3c7,#fde68a); color: #92400e; border: 1px solid #fbbf24; }
       .csv-inv.csv-inv-sales {
         border-right: 4px solid #16a34a;
         background: linear-gradient(90deg, #f0fdf4 0%, #fff 40%);
@@ -856,6 +1042,9 @@
       .csv-inv.csv-inv-purchase {
         border-right: 4px solid #2563eb;
         background: linear-gradient(90deg, #eff6ff 0%, #fff 40%);
+      }
+      .csv-inv.csv-inv-receipt {
+        border-left: 3px dashed #f59e0b;
       }
       .csv-inv.csv-inv-fraud {
         border-right: 4px solid #dc2626 !important;
@@ -1118,7 +1307,7 @@
         '" data-idx="' +
         i +
         '" placeholder="الصق رابط المشاركة هنا…" spellcheck="false" autocomplete="off">' +
-        '<button type="button" class="csv-qr-btn" title="مسح رمز QR للفاتورة" data-qr-for="' +
+        '<button type="button" class="csv-qr-btn" title="مسح رمز QR للفاتورة أو الإيصال" data-qr-for="' +
         type +
         '-' +
         i +
@@ -1199,9 +1388,18 @@
   function extractEtaUrlFromText(text) {
     if (!text) return null;
     const t = String(text).trim();
+    // قبول الرابط كاملاً بما في ذلك hash للإيصالات (#Total:…,IssuerRIN:…)
     if (isValidEtaLink(t)) return t;
-    const m = t.match(/https:\/\/invoicing\.eta\.gov\.eg\/documents\/[A-Za-z0-9]+\/share\/[A-Za-z0-9]+/);
-    return m ? m[0] : null;
+    // إيصال (مع أو بدون الجزء بعد #)
+    const receiptM = t.match(
+      /https:\/\/invoicing\.eta\.gov\.eg\/receipts\/search\/[A-Fa-f0-9]+\/share\/[^\s#]+(?:#[^\s]*)?/i
+    );
+    if (receiptM) return receiptM[0];
+    // فاتورة
+    const invM = t.match(
+      /https:\/\/invoicing\.eta\.gov\.eg\/documents\/[A-Za-z0-9]+\/share\/[A-Za-z0-9]+/i
+    );
+    return invM ? invM[0] : null;
   }
 
   async function openQrScanner(targetInput, onDone) {
@@ -1211,8 +1409,8 @@
       overlay.id = 'csv-qr-overlay';
       overlay.innerHTML =
         '<div id="csv-qr-box">' +
-        '<div style="font-weight:800;margin-bottom:8px;color:#0b1f3a">مسح رمز الفاتورة (QR)</div>' +
-        '<p style="font-size:12px;color:#64748b;margin:0 0 12px;line-height:1.5">وجّه الكاميرا نحو رمز الاستجابة السريعة على الفاتورة الإلكترونية</p>' +
+        '<div style="font-weight:800;margin-bottom:8px;color:#0b1f3a">مسح رمز الفاتورة أو الإيصال (QR)</div>' +
+        '<p style="font-size:12px;color:#64748b;margin:0 0 12px;line-height:1.5">وجّه الكاميرا نحو رمز الاستجابة السريعة على الفاتورة أو الإيصال الإلكتروني — سيتم التعرف تلقائياً على النوع</p>' +
         '<div id="csv-qr-reader"></div>' +
         '<p id="csv-qr-status" style="font-size:12px;color:#0d9488;margin:10px 0 0;min-height:18px"></p>' +
         '<button type="button" class="csv-btn csv-btn-soft" id="csv-qr-close" style="margin-top:12px">إغلاق</button>' +
@@ -1289,15 +1487,65 @@
   }
 
   /** يضع رابط مشاركة حقيقي في الحقل فقط — الاستخلاص يتم لاحقاً من API الحي */
-  function fillSampleLink(type) {
+  function fillSampleLink(type, kind) {
     const inputs = [...document.querySelectorAll('input[data-csv-type="' + type + '"]')];
     const empty = inputs.find(function (i) {
       return !i.value.trim();
     });
     const target = empty || inputs[0];
     if (!target) return;
-    target.value = SAMPLE_LIVE_LINK;
+    target.value = kind === 'receipt' ? SAMPLE_LIVE_RECEIPT : SAMPLE_LIVE_LINK;
     target.dispatchEvent(new Event('blur'));
+  }
+
+  /** تذكير بعد 30 يوماً بإرسال عيّنة جديدة */
+  function saveSampleReminder() {
+    try {
+      localStorage.setItem(
+        REMINDER_STORAGE_KEY,
+        JSON.stringify({ lastSampleAt: Date.now(), days: DOC_FRESHNESS_DAYS })
+      );
+    } catch (_) {}
+  }
+
+  function checkSampleReminder() {
+    const el = document.getElementById('csv-reminder-banner');
+    if (!el) return;
+    try {
+      const raw = localStorage.getItem(REMINDER_STORAGE_KEY);
+      if (!raw) {
+        el.style.display = 'none';
+        return;
+      }
+      const obj = JSON.parse(raw);
+      const last = Number(obj.lastSampleAt) || 0;
+      if (!last) {
+        el.style.display = 'none';
+        return;
+      }
+      const days = (Date.now() - last) / (24 * 60 * 60 * 1000);
+      if (days >= DOC_FRESHNESS_DAYS) {
+        el.style.display = 'block';
+        el.innerHTML =
+          '🔔 <strong>تذكير:</strong> مرّ أكثر من ' +
+          DOC_FRESHNESS_DAYS +
+          ' يوماً على آخر عيّنة تم تحليلها. يُنصح بإرسال عيّنة جديدة من <strong>فواتير/إيصالات مبيعات ومشتريات</strong> حديثة لدعم إثبات الجدية.';
+      } else {
+        const left = Math.ceil(DOC_FRESHNESS_DAYS - days);
+        el.style.display = 'block';
+        el.style.background = '#f0fdf4';
+        el.style.borderColor = '#86efac';
+        el.style.color = '#14532d';
+        el.innerHTML =
+          '✓ آخر عيّنة خلال ' +
+          Math.floor(days) +
+          ' يوماً. التذكير التالي بعد حوالي <strong>' +
+          left +
+          '</strong> يوماً لإرسال عيّنة محدّثة.';
+      }
+    } catch (_) {
+      el.style.display = 'none';
+    }
   }
 
   function setRole(role) {
@@ -1372,18 +1620,21 @@
     for (const item of all) {
       try {
         const fetched = await fetchDocument(item.url);
+        const docKind = fetched.docKind || (fetched.data && fetched.data._docKind) || 'invoice';
         results.push({
           ok: true,
           side: item.side,
           url: item.url,
           source: fetched.source,
-          data: fetched.data
+          data: fetched.data,
+          docKind: docKind
         });
       } catch (e) {
         results.push({
           ok: false,
           side: item.side,
           url: item.url,
+          docKind: detectDocKind(item.url) || 'invoice',
           errorCode: (e && e.code) || 'UNKNOWN',
           errorMsg: explainFetchError((e && e.code) || 'UNKNOWN')
         });
@@ -1408,6 +1659,10 @@
     };
 
     renderPortalResults(sessionStore.lastAnalysis);
+    if (summary.okCount > 0) {
+      saveSampleReminder();
+      checkSampleReminder();
+    }
     if (btn) {
       btn.disabled = false;
       btn.innerHTML = '🔍 تحليل العيّنة وإظهار مؤشر الجدية';
@@ -1472,7 +1727,7 @@
       let fraudHtml = '';
       if (!idOk && target && expectedId) {
         fraudHtml +=
-          '<div class="csv-fraud-alert"><strong>⚠ عدم تطابق رقم التسجيل:</strong> في الفاتورة <span dir="ltr">' +
+          '<div class="csv-fraud-alert"><strong>⚠ عدم تطابق رقم التسجيل:</strong> في المستند <span dir="ltr">' +
           (expectedId || '—') +
           '</span> بينما المسجّل <span dir="ltr">' +
           target +
@@ -1482,7 +1737,7 @@
       }
       if (!nameOk && companyName && expectedName) {
         fraudHtml +=
-          '<div class="csv-fraud-alert"><strong>⚠ عدم تطابق اسم المنشأة:</strong> في الفاتورة «' +
+          '<div class="csv-fraud-alert"><strong>⚠ عدم تطابق اسم المنشأة:</strong> في المستند «' +
           expectedName +
           '» بينما المسجّل «' +
           companyName +
@@ -1512,17 +1767,31 @@
       : '';
 
     const miniReportHtml =
-      '<div class="csv-mini-report">' +
+      '<div class="csv-mini-report" style="grid-template-columns:1fr 1fr 1fr 1fr">' +
       '<div class="box sales"><div class="n" style="color:#166534">' +
       (s.salesCount || 0) +
-      '</div><div class="l">فواتير مبيعات</div><div style="font-weight:700;margin-top:4px;color:#15803d">' +
+      '</div><div class="l">مبيعات (الكل)</div><div style="font-size:11px;color:#64748b;margin-top:2px">' +
+      (s.salesInvoiceCount || 0) +
+      ' فاتورة · ' +
+      (s.salesReceiptCount || 0) +
+      ' إيصال</div><div style="font-weight:700;margin-top:4px;color:#15803d">' +
       fmtMoney(s.salesAmount || 0) +
       '</div></div>' +
       '<div class="box purchases"><div class="n" style="color:#1e40af">' +
       (s.purchasesCount || 0) +
-      '</div><div class="l">فواتير مشتريات</div><div style="font-weight:700;margin-top:4px;color:#1d4ed8">' +
+      '</div><div class="l">مشتريات (الكل)</div><div style="font-size:11px;color:#64748b;margin-top:2px">' +
+      (s.purchaseInvoiceCount || 0) +
+      ' فاتورة · ' +
+      (s.purchaseReceiptCount || 0) +
+      ' إيصال</div><div style="font-weight:700;margin-top:4px;color:#1d4ed8">' +
       fmtMoney(s.purchasesAmount || 0) +
-      '</div></div></div>';
+      '</div></div>' +
+      '<div class="box" style="background:linear-gradient(135deg,#eef2ff,#e0e7ff);border:1.5px solid #a5b4fc"><div class="n" style="color:#3730a3">' +
+      (s.invoiceCount || 0) +
+      '</div><div class="l">فواتير</div></div>' +
+      '<div class="box" style="background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1.5px solid #fbbf24"><div class="n" style="color:#92400e">' +
+      (s.receiptCount || 0) +
+      '</div><div class="l">إيصالات</div></div></div>';
 
     panel.innerHTML =
       '<div class="csv-card">' +
@@ -1537,7 +1806,7 @@
       '<div class="csv-kpi">' +
       '<div><div class="v">' +
       s.okCount +
-      '</div><div class="l">فاتورة مُستخرجة</div></div>' +
+      '</div><div class="l">مستند مُستخرج</div></div>' +
       '<div><div class="v" style="color:#059669">' +
       s.validCount +
       '</div><div class="l">صالحة (Valid)</div></div>' +
@@ -1552,28 +1821,37 @@
       fraudSummaryHtml +
       dateAdviceHtml +
       (function () {
-        let salesNum = 0;
-        let purchaseNum = 0;
+        const counters = {
+          'مبيعات-invoice': 0,
+          'مبيعات-receipt': 0,
+          'مشتريات-invoice': 0,
+          'مشتريات-receipt': 0
+        };
         return analysis.results.map(function (r, i) {
-          let displayNum;
-          if (r.side === 'مبيعات') {
-            salesNum++;
-            displayNum = salesNum;
-          } else if (r.side === 'مشتريات') {
-            purchaseNum++;
-            displayNum = purchaseNum;
-          } else {
-            displayNum = i + 1;
-          }
+          const kind = r.docKind || (r.data && r.data._docKind) || 'invoice';
+          const kindAr = kind === 'receipt' ? 'إيصال' : 'فاتورة';
+          const key = (r.side || '') + '-' + kind;
+          if (counters[key] != null) counters[key]++;
+          const displayNum = counters[key] != null ? counters[key] : i + 1;
+          const kindTag =
+            kind === 'receipt'
+              ? '<span class="csv-tag receipt">إيصال</span>'
+              : '<span class="csv-tag invoice">فاتورة</span>';
           if (!r.ok) {
             return (
-              '<div class="csv-inv"><div class="hd"><strong>فاتورة ' +
+              '<div class="csv-inv' +
+              (kind === 'receipt' ? ' csv-inv-receipt' : '') +
+              '"><div class="hd"><strong>' +
+              kindAr +
+              ' ' +
               displayNum +
               ' ' +
               (r.side || '') +
-              '</strong><span class="csv-st csv-st-wa">تعذّر الاستخلاص</span></div>' +
+              '</strong> ' +
+              kindTag +
+              ' <span class="csv-st csv-st-wa">تعذّر الاستخلاص</span></div>' +
               '<div style="font-size:12px;color:#b91c1c;margin-top:6px;line-height:1.5">' +
-              (r.errorMsg || 'تعذّر جلب بيانات الفاتورة من واجهة الهيئة.') +
+              (r.errorMsg || 'تعذّر جلب بيانات المستند من واجهة الهيئة.') +
               '</div>' +
               '<div style="font-size:11px;color:#64748b;margin-top:4px;direction:ltr;word-break:break-all">' +
               (r.url || '') +
@@ -1590,17 +1868,28 @@
               : r.side === 'مشتريات'
                 ? '<span class="csv-tag in">مشتريات</span>'
                 : '';
+          const typeName =
+            (d.documentType &&
+              (d.documentType.name || d.documentType.nameSecondaryLang)) ||
+            d.documentTypeNameSecondaryLang ||
+            (kind === 'receipt' ? 'إيصال إلكتروني' : 'معاملة');
+          const extraReceiptCls = kind === 'receipt' ? ' csv-inv-receipt' : '';
           return (
             '<div class="csv-inv' +
             info.invClass +
+            extraReceiptCls +
             '">' +
             '<div class="hd">' +
-            '<div><strong>فاتورة ' +
+            '<div><strong>' +
+            kindAr +
+            ' ' +
             displayNum +
             '</strong> ' +
             sideTag +
+            ' ' +
+            kindTag +
             '<div style="font-size:11px;color:#64748b;margin-top:3px">' +
-            (d.documentTypeNameSecondaryLang || 'معاملة') +
+            typeName +
             ' · تاريخ الإصدار: <strong style="color:#0b1f3a">' +
             invDate +
             '</strong>' +
@@ -1794,28 +2083,36 @@
             </svg>
           </div>
           <div style="flex:1;min-width:0">
-            <div style="font-weight:700;color:#0b1f3a;font-size:13px;margin-bottom:4px">كيف تُضيف الفاتورة؟</div>
+            <div style="font-weight:700;color:#0b1f3a;font-size:13px;margin-bottom:4px">كيف تُضيف الفاتورة أو الإيصال؟</div>
             <p style="margin:0;font-size:12.5px;color:#334155;line-height:1.7">
-              يمكنك <strong>لصق رابط المشاركة</strong> مباشرة في الحقل، أو الضغط على زر الكاميرا <strong>📷</strong> لـ<strong>مسح رمز QR</strong> الظاهر على الفاتورة الإلكترونية.
-              يُقبل فقط الرابط الذي يبدأ بـ
-              <code dir="ltr" style="background:#dbeafe;padding:1px 5px;border-radius:4px;font-size:11px">https://invoicing.eta.gov.eg/documents/…/share/…</code>
+              يمكنك <strong>لصق رابط المشاركة</strong> مباشرة في الحقل، أو الضغط على زر الكاميرا <strong>📷</strong> لـ<strong>مسح رمز QR</strong> الظاهر على الفاتورة أو الإيصال الإلكتروني.
+              يتعرّف النظام تلقائياً على نوع المستند (فاتورة أم إيصال) دون تدخل منك.
+              الصيغ المقبولة:
+              <br><code dir="ltr" style="background:#dbeafe;padding:1px 5px;border-radius:4px;font-size:11px">https://invoicing.eta.gov.eg/documents/…/share/…</code> (فاتورة)
+              <br><code dir="ltr" style="background:#fef3c7;padding:1px 5px;border-radius:4px;font-size:11px">https://invoicing.eta.gov.eg/receipts/search/…/share/…</code> (إيصال)
+            </p>
+            <p style="margin:8px 0 0;font-size:12px;color:#b45309;line-height:1.6;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:8px 10px">
+              ⏰ <strong>تنويه:</strong> يُفضّل أن تكون الفاتورة أو الإيصال صادرة خلال آخر <strong>30 يوماً</strong> لدعم إثبات الجدية بشكل أقوى.
             </p>
           </div>
         </div>
+        <div id="csv-reminder-banner" style="display:none;margin:0 0 14px;padding:12px 14px;background:#eff6ff;border:1.5px solid #93c5fd;border-radius:10px;font-size:13px;color:#1e3a5f;line-height:1.65"></div>
         <div class="csv-attempts" id="csv-attempts">
           <span>محاولات الروابط المرفوضة المتبقية: <strong id="csv-attempts-left">5</strong></span>
           <span style="font-size:12px;opacity:.85">بعد 5 محاولات يُوقف الفحص مؤقتاً</span>
         </div>
         <div class="csv-links">
           <div class="csv-linkbox">
-            <h4><span class="csv-tag in">مشتريات</span> فواتير مشتريات</h4>
+            <h4><span class="csv-tag in">مشتريات</span> فواتير / إيصالات مشتريات</h4>
             <div id="csv-links-in"></div>
-            <button type="button" class="csv-btn csv-btn-soft" style="padding:5px 10px;font-size:12px;margin-top:4px" data-demo="in" title="يضع رابط مشاركة حقيقي — الاستخلاص من API الحي">＋ رابط اختبار حي</button>
+            <button type="button" class="csv-btn csv-btn-soft" style="padding:5px 10px;font-size:12px;margin-top:4px" data-demo="in" title="يضع رابط فاتورة حي">＋ فاتورة اختبار</button>
+            <button type="button" class="csv-btn csv-btn-soft" style="padding:5px 10px;font-size:12px;margin-top:4px;margin-right:6px" data-demo-receipt="in" title="يضع رابط إيصال حي">＋ إيصال اختبار</button>
           </div>
           <div class="csv-linkbox">
-            <h4><span class="csv-tag out">مبيعات</span> فواتير مبيعات </h4>
+            <h4><span class="csv-tag out">مبيعات</span> فواتير / إيصالات مبيعات</h4>
             <div id="csv-links-out"></div>
-            <button type="button" class="csv-btn csv-btn-soft" style="padding:5px 10px;font-size:12px;margin-top:4px" data-demo="out" title="يضع رابط مشاركة حقيقي — الاستخلاص من API الحي">＋ رابط اختبار حي</button>
+            <button type="button" class="csv-btn csv-btn-soft" style="padding:5px 10px;font-size:12px;margin-top:4px" data-demo="out" title="يضع رابط فاتورة حي">＋ فاتورة اختبار</button>
+            <button type="button" class="csv-btn csv-btn-soft" style="padding:5px 10px;font-size:12px;margin-top:4px;margin-right:6px" data-demo-receipt="out" title="يضع رابط إيصال حي">＋ إيصال اختبار</button>
           </div>
         </div>
         <div class="csv-cap">
@@ -1859,9 +2156,15 @@
     });
     root.querySelectorAll('[data-demo]').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        fillSampleLink(btn.getAttribute('data-demo'));
+        fillSampleLink(btn.getAttribute('data-demo'), 'invoice');
       });
     });
+    root.querySelectorAll('[data-demo-receipt]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        fillSampleLink(btn.getAttribute('data-demo-receipt'), 'receipt');
+      });
+    });
+    checkSampleReminder();
     const analyze = root.querySelector('#csv-analyze-btn');
     if (analyze) analyze.addEventListener('click', runAnalysis);
     const reset = root.querySelector('#csv-reset-btn');
@@ -2222,7 +2525,7 @@
       '<div><span class="k">السجل التجاري الموحد</span><br><span class="v" dir="ltr">' +
       (c.crNumber ? formatCR(c.crNumber) : '—') +
       '</span></div>' +
-      '<div><span class="k">عدد الفواتير</span><br><span class="v">' +
+      '<div><span class="k">عدد المستندات</span><br><span class="v">' +
       (c.invoiceCount || 0) +
       '</span></div>' +
       '<div><span class="k">التصنيف المعتمد</span><br><span class="csv-pill ' +
@@ -2250,35 +2553,44 @@
         : '') +
       '</div>' +
       '<div style="margin-top:16px">' +
-      '<div style="font-weight:700;font-size:14px;margin-bottom:10px">الفواتير المرفوعة والفحص التلقائي (' +
+      '<div style="font-weight:700;font-size:14px;margin-bottom:10px">المستندات المرفوعة (فواتير/إيصالات) والفحص التلقائي (' +
       allInvoices.length +
       ')</div>' +
       (allInvoices.length === 0
-        ? '<p style="color:#64748b;font-size:13px">لا توجد فواتير في السجل.</p>'
+        ? '<p style="color:#64748b;font-size:13px">لا توجد مستندات في السجل.</p>'
         : (function () {
-            let salesNum = 0;
-            let purchaseNum = 0;
+            const counters = {
+              'مبيعات-invoice': 0,
+              'مبيعات-receipt': 0,
+              'مشتريات-invoice': 0,
+              'مشتريات-receipt': 0
+            };
             return allInvoices.map(function (item, i) {
               const inv = item.inv;
               const rec = item.rec;
-              let displayNum;
-              if (inv.side === 'مبيعات') {
-                salesNum++;
-                displayNum = salesNum;
-              } else if (inv.side === 'مشتريات') {
-                purchaseNum++;
-                displayNum = purchaseNum;
-              } else {
-                displayNum = i + 1;
-              }
+              const kind = inv.docKind || (inv.data && inv.data._docKind) || 'invoice';
+              const kindAr = kind === 'receipt' ? 'إيصال' : 'فاتورة';
+              const key = (inv.side || '') + '-' + kind;
+              if (counters[key] != null) counters[key]++;
+              const displayNum = counters[key] != null ? counters[key] : i + 1;
+              const kindTag =
+                kind === 'receipt'
+                  ? '<span class="csv-tag receipt">إيصال</span>'
+                  : '<span class="csv-tag invoice">فاتورة</span>';
               if (!inv.ok) {
                 return (
-                  '<div class="csv-inv"><strong>فاتورة ' +
+                  '<div class="csv-inv' +
+                  (kind === 'receipt' ? ' csv-inv-receipt' : '') +
+                  '"><strong>' +
+                  kindAr +
+                  ' ' +
                   displayNum +
                   (inv.side ? ' ' + inv.side : '') +
-                  '</strong> · <span class="csv-st csv-st-wa">تعذّر الاستخلاص</span>' +
+                  '</strong> ' +
+                  kindTag +
+                  ' · <span class="csv-st csv-st-wa">تعذّر الاستخلاص</span>' +
                   '<div style="font-size:12px;color:#b91c1c;margin-top:4px">' +
-                  (inv.errorMsg || 'تعذّر جلب بيانات الفاتورة من واجهة الهيئة.') +
+                  (inv.errorMsg || 'تعذّر جلب بيانات المستند من واجهة الهيئة.') +
                   '</div>' +
                   '<div style="font-size:11px;color:#64748b;margin-top:4px">مصدر الفحص: ' +
                   (rec.role === 'auditor' ? 'محاسب قانوني' : 'مستثمر') +
@@ -2319,6 +2631,7 @@
               const fullOk = idOk && (nameOk || !companyName);
 
               let invClass = isSales ? ' csv-inv-sales' : isPurchase ? ' csv-inv-purchase' : '';
+              if (kind === 'receipt') invClass += ' csv-inv-receipt';
               if (!fullOk && (target || companyName)) invClass += ' csv-inv-fraud';
 
               const invDate = formatInvoiceDate(d.dateTimeIssued || d.dateTimeRecevied);
@@ -2333,7 +2646,7 @@
               let fraudHtml = '';
               if (!idOk && target && expectedId) {
                 fraudHtml +=
-                  '<div class="csv-fraud-alert"><strong>⚠ عدم تطابق رقم التسجيل:</strong> في الفاتورة <span dir="ltr">' +
+                  '<div class="csv-fraud-alert"><strong>⚠ عدم تطابق رقم التسجيل:</strong> في المستند <span dir="ltr">' +
                   expectedId +
                   '</span> بينما المسجّل <span dir="ltr">' +
                   target +
@@ -2343,7 +2656,7 @@
               }
               if (!nameOk && companyName && expectedName) {
                 fraudHtml +=
-                  '<div class="csv-fraud-alert"><strong>⚠ عدم تطابق اسم المنشأة:</strong> في الفاتورة «' +
+                  '<div class="csv-fraud-alert"><strong>⚠ عدم تطابق اسم المنشأة:</strong> في المستند «' +
                   expectedName +
                   '» بينما المسجّل «' +
                   companyName +
@@ -2357,10 +2670,14 @@
                 invClass +
                 '">' +
                 '<div class="hd">' +
-                '<div><strong>فاتورة ' +
+                '<div><strong>' +
+                kindAr +
+                ' ' +
                 displayNum +
                 '</strong> ' +
                 sideTag +
+                ' ' +
+                kindTag +
                 '<div style="font-size:11px;color:#64748b">📅 تاريخ الإصدار: <strong style="color:#0b1f3a">' +
                 invDate +
                 '</strong>' +
