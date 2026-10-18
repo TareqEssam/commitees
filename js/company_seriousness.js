@@ -1508,6 +1508,151 @@
     } catch (_) {}
   }
 
+  /** معلومات تقريبية عن الجهاز؛ لا نعتمد على نوع الجهاز وحده لتحديد الدعم. */
+  function getReminderDeviceInfo() {
+    const ua = navigator.userAgent || '';
+    const platform = navigator.platform || '';
+    const isIPadOS = platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+    let device = 'كمبيوتر';
+    if (/Android/i.test(ua)) device = 'Android';
+    else if (/iPhone|iPad|iPod/i.test(ua) || isIPadOS) device = 'iPhone / iPad';
+    else if (/Windows Phone/i.test(ua)) device = 'هاتف Windows';
+
+    let browser = 'متصفح الويب';
+    if (/Edg\//i.test(ua)) browser = 'Microsoft Edge';
+    else if (/CriOS|Chrome\//i.test(ua) && !/Edg\//i.test(ua)) browser = 'Google Chrome';
+    else if (/FxiOS|Firefox\//i.test(ua)) browser = 'Firefox';
+    else if (/Safari\//i.test(ua) && !/Chrome|CriOS|Edg\//i.test(ua)) browser = 'Safari';
+
+    return {
+      device: device,
+      browser: browser,
+      secure: window.isSecureContext === true,
+      notificationApi: 'Notification' in window,
+      serviceWorker: 'serviceWorker' in navigator,
+      isIOS: device === 'iPhone / iPad',
+      isAndroid: device === 'Android'
+    };
+  }
+
+  function reminderDeviceInstructions(info) {
+    if (info.isIOS) {
+      return 'على iPhone/iPad: افتح الرابط في Safari، ثم اختر «مشاركة» ← «إضافة إلى الشاشة الرئيسية». افتح الموقع من الأيقونة المضافة؛ دعم Push يتطلب iOS/iPadOS 16.4 أو أحدث وموافقة المستخدم. أما ملف التقويم فيمكن فتحه ثم تأكيد إضافته إلى التقويم.';
+    }
+    if (info.isAndroid) {
+      return 'على Android: افتح الموقع في Chrome، واسمح بالإشعارات عند طلبها. ويمكنك من قائمة ⋮ اختيار «إضافة إلى الشاشة الرئيسية». لإضافة الموعد، افتح ملف التقويم الذي تم تنزيله واختر حفظه في تطبيق التقويم.';
+    }
+    return 'على الكمبيوتر: اسمح بإشعارات الموقع من إعدادات الموقع في المتصفح. لإضافة الموعد، افتح ملف .ics الذي تم تنزيله باستخدام تطبيق التقويم ثم وافق على استيراد الحدث.';
+  }
+
+  function escapeIcsText(value) {
+    return String(value || '')
+      .replace(/\\/g, '\\\\')
+      .replace(/\r?\n/g, '\\n')
+      .replace(/,/g, '\\,')
+      .replace(/;/g, '\\;');
+  }
+
+  function formatIcsLocalDate(date) {
+    const pad = function (n) { return String(n).padStart(2, '0'); };
+    return date.getFullYear() + pad(date.getMonth() + 1) + pad(date.getDate()) +
+      'T' + pad(date.getHours()) + pad(date.getMinutes()) + pad(date.getSeconds());
+  }
+
+  function formatIcsUtcDate(date) {
+    return date.getUTCFullYear() + String(date.getUTCMonth() + 1).padStart(2, '0') +
+      String(date.getUTCDate()).padStart(2, '0') + 'T' +
+      String(date.getUTCHours()).padStart(2, '0') +
+      String(date.getUTCMinutes()).padStart(2, '0') +
+      String(date.getUTCSeconds()).padStart(2, '0') + 'Z';
+  }
+
+  /** ينشئ ملف تقويم متكرر محلياً؛ لا يتطلب إرسال طلب إلى الخادم. */
+  function downloadCalendarReminder(root) {
+    let baseTime = Date.now();
+    try {
+      const saved = JSON.parse(localStorage.getItem(REMINDER_STORAGE_KEY) || 'null');
+      if (saved && Number(saved.lastSampleAt) > 0) baseTime = Number(saved.lastSampleAt);
+    } catch (_) {}
+
+    const due = new Date(baseTime);
+    due.setDate(due.getDate() + DOC_FRESHNESS_DAYS);
+    due.setHours(9, 0, 0, 0);
+    const end = new Date(due.getTime() + 15 * 60 * 1000);
+    const stamp = formatIcsUtcDate(new Date());
+    const startText = formatIcsLocalDate(due);
+    const endText = formatIcsLocalDate(end);
+    const portalHash = sessionStore.role === 'auditor' ? '#auditor' : '#investor';
+    const portalUrl = location.origin + location.pathname + location.search + portalHash;
+    const description = 'حان موعد مراجعة عينة حديثة من فواتير/إيصالات المنشأة. افتح المنصة: ' + portalUrl;
+    const uid = 'csv-reminder-' + Date.now() + '@company-seriousness.local';
+    const ics = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Company Seriousness//Monthly Sample Reminder//AR',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      'BEGIN:VEVENT',
+      'UID:' + uid,
+      'DTSTAMP:' + stamp,
+      'DTSTART:' + startText,
+      'DTEND:' + endText,
+      'RRULE:FREQ=DAILY;INTERVAL=30',
+      'SUMMARY:' + escapeIcsText('مراجعة شهرية لفواتير وإيصالات المنشأة'),
+      'DESCRIPTION:' + escapeIcsText(description),
+      'URL:' + portalUrl,
+      'BEGIN:VALARM',
+      'TRIGGER:-P1D',
+      'ACTION:DISPLAY',
+      'DESCRIPTION:' + escapeIcsText('تذكير: اقترب موعد مراجعة عينة المستندات'),
+      'END:VALARM',
+      'END:VEVENT',
+      'END:VCALENDAR',
+      ''
+    ].join('\r\n');
+
+    try {
+      const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'company-seriousness-reminder.ics';
+      link.style.display = 'none';
+      (root || document.body).appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+      const status = root && root.querySelector('#csv-calendar-status');
+      if (status) {
+        status.style.display = 'block';
+        status.textContent = 'تم تجهيز ملف التقويم. افتحه من التنزيلات ثم وافق على إضافته إلى تقويم جهازك؛ لن يُضاف الموعد قبل تأكيدك.';
+      }
+    } catch (_) {
+      const status = root && root.querySelector('#csv-calendar-status');
+      if (status) {
+        status.style.display = 'block';
+        status.textContent = 'تعذر تنزيل ملف التقويم من هذا المتصفح. جرّب فتح المنصة في متصفح حديث ثم أعد المحاولة.';
+      }
+    }
+  }
+
+  /** زر Push توضيحي فقط: يشرح خطوات الجهاز ولا يدّعي إنشاء اشتراك Push حقيقي. */
+  function showPushDemo(root) {
+    const info = getReminderDeviceInfo();
+    const panel = root && root.querySelector('#csv-push-help');
+    if (!panel) return;
+    const available = info.secure && info.notificationApi && info.serviceWorker;
+    const statusText = available
+      ? 'المتصفح يوفّر واجهات الإشعارات وService Worker في هذه الصفحة، لكن Push المستقبلي غير موصول بخادم في هذه النسخة التجريبية.'
+      : 'لا تتوفر كل واجهات Push المطلوبة في بيئة التصفح الحالية، أو أن الصفحة ليست على اتصال آمن HTTPS.';
+    panel.style.display = 'block';
+    panel.innerHTML =
+      '<div style="font-weight:800;margin-bottom:6px">الجهاز المكتشف: ' + info.device + ' · ' + info.browser + '</div>' +
+      '<div style="font-size:12px;line-height:1.7;margin-bottom:8px">' + statusText + '</div>' +
+      '<div style="font-size:12px;line-height:1.8">' + reminderDeviceInstructions(info) + '</div>' +
+      '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:12px;line-height:1.7">هذا الزر محاكاة إرشادية فقط: لا يطلب إذن الإشعارات، ولا ينشئ اشتراك Push، ولا يرسل إشعاراً مستقبلياً. التذكير الذي يمكن إضافته فعلياً الآن هو ملف التقويم.</div>';
+  }
+
   function checkSampleReminder() {
     const el = document.getElementById('csv-reminder-banner');
     if (!el) return;
@@ -2097,6 +2242,17 @@
           </div>
         </div>
         <div id="csv-reminder-banner" style="display:none;margin:0 0 14px;padding:12px 14px;background:#eff6ff;border:1.5px solid #93c5fd;border-radius:10px;font-size:13px;color:#1e3a5f;line-height:1.65"></div>
+        <div class="csv-card" style="margin:0 0 16px;border:1.5px solid #bfdbfe;background:linear-gradient(135deg,#f8fbff,#f0fdfa)">
+          <h3 style="margin:0 0 6px">🔔 تذكير على جهازك</h3>
+          <div class="sub" style="margin:0 0 12px">أضف موعداً متكرراً إلى تقويم هاتفك أو كمبيوترك. لا يحتاج هذا الخيار إلى تشغيل خادم المنصة في موعد التذكير.</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            <button type="button" class="csv-btn csv-btn-main" id="csv-calendar-reminder-btn">📅 إضافة تذكير إلى تقويم الجهاز</button>
+            <button type="button" class="csv-btn csv-btn-soft" id="csv-push-demo-btn">🔔 Push — معرفة دعم الجهاز وطريقة التفعيل</button>
+          </div>
+          <div id="csv-calendar-status" role="status" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;font-size:12px;line-height:1.7"></div>
+          <div id="csv-push-help" role="status" style="display:none;margin-top:10px;padding:12px;border-radius:8px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a5f;font-size:12px;line-height:1.7"></div>
+          <div style="margin-top:9px;color:#64748b;font-size:11px;line-height:1.7">ملاحظة: زر Push توضيحي في هذه النسخة وليس خدمة Push فعلية. ملف التقويم يُنزّل أولاً ويجب على المستخدم تأكيد إضافته في تطبيق التقويم.</div>
+        </div>
         <div class="csv-attempts" id="csv-attempts">
           <span>محاولات الروابط المرفوضة المتبقية: <strong id="csv-attempts-left">5</strong></span>
           <span style="font-size:12px;opacity:.85">بعد 5 محاولات يُوقف الفحص مؤقتاً</span>
@@ -2165,6 +2321,18 @@
       });
     });
     checkSampleReminder();
+    const calendarReminder = root.querySelector('#csv-calendar-reminder-btn');
+    if (calendarReminder) {
+      calendarReminder.addEventListener('click', function () {
+        downloadCalendarReminder(root);
+      });
+    }
+    const pushDemo = root.querySelector('#csv-push-demo-btn');
+    if (pushDemo) {
+      pushDemo.addEventListener('click', function () {
+        showPushDemo(root);
+      });
+    }
     const analyze = root.querySelector('#csv-analyze-btn');
     if (analyze) analyze.addEventListener('click', runAnalysis);
     const reset = root.querySelector('#csv-reset-btn');
