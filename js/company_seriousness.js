@@ -2198,7 +2198,7 @@
         </div>
         <div class="csv-field">
           <label>رقم السجل التجاري الموحد <span style="color:#dc2626">*</span> <span style="color:#64748b;font-weight:400">(15 رقم)</span></label>
-          <input type="text" id="csv-cr-number" placeholder="12345-67890-12345" value="" inputmode="numeric" autocomplete="off" dir="ltr" style="text-align:left;letter-spacing:0.5px">
+          <input type="text" id="csv-cr-number" placeholder="XXXXX-XXXXX-XXXXX" value="" inputmode="numeric" autocomplete="off" dir="ltr" style="text-align:left;letter-spacing:0.5px">
         </div>
         <div class="csv-field" id="csv-auditor-extra" style="display:${isAuditor ? 'block' : 'none'}">
           <label>مرجع مهني للمحاسب (اختياري)</label>
@@ -2243,8 +2243,8 @@
         </div>
         <div id="csv-reminder-banner" style="display:none;margin:0 0 14px;padding:12px 14px;background:#eff6ff;border:1.5px solid #93c5fd;border-radius:10px;font-size:13px;color:#1e3a5f;line-height:1.65"></div>
         <div class="csv-card" style="margin:0 0 16px;border:1.5px solid #bfdbfe;background:linear-gradient(135deg,#f8fbff,#f0fdfa)">
-          <h3 style="margin:0 0 6px">🔔 تذكير على جهازك</h3>
-          <div class="sub" style="margin:0 0 12px">أضف موعداً متكرراً إلى تقويم هاتفك أو كمبيوترك. لا يحتاج هذا الخيار إلى تشغيل خادم المنصة في موعد التذكير.</div>
+          <h3 style="margin:0 0 6px">🔔 تذكيرى كل 30 يوماً </h3>
+          <div class="sub" style="margin:0 0 12px">أضف موعداً متكرراً إلى تقويم هاتفك أو كمبيوترك.</div>
           <div style="display:flex;flex-wrap:wrap;gap:8px">
             <button type="button" class="csv-btn csv-btn-main" id="csv-calendar-reminder-btn">📅 إضافة تذكير إلى تقويم الجهاز</button>
             <button type="button" class="csv-btn csv-btn-soft" id="csv-push-demo-btn">🔔 Push — معرفة دعم الجهاز وطريقة التفعيل</button>
