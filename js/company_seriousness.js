@@ -2248,14 +2248,14 @@
             <span style="color:#64748b;font-size:11.5px;white-space:nowrap">عرض الخيارات ▾</span>
           </summary>
           <div style="padding:0 12px 12px;border-top:1px solid #f1f5f9">
-            <div class="sub" style="margin:10px 0 12px;font-size:12px">أضف موعداً متكرراً إلى تقويم هاتفك أو كمبيوترك. هذا الخيار لا يحتاج إلى تشغيل خادم المنصة عند موعد التذكير.</div>
+            <div class="sub" style="margin:10px 0 12px;font-size:12px">أضف موعداً متكرراً إلى تقويم هاتفك أو كمبيوترك.</div>
             <div style="display:flex;flex-wrap:wrap;gap:8px">
               <button type="button" class="csv-btn csv-btn-main" id="csv-calendar-reminder-btn">📅 إضافة تذكير إلى تقويم الجهاز</button>
-              <button type="button" class="csv-btn csv-btn-soft" id="csv-push-demo-btn">🔔 معرفة دعم Push</button>
+              <button type="button" class="csv-btn csv-btn-soft" id="csv-push-demo-btn">🔔 تفعيل الاشعارات</button>
             </div>
             <div id="csv-calendar-status" role="status" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;font-size:12px;line-height:1.7"></div>
             <div id="csv-push-help" role="status" style="display:none;margin-top:10px;padding:12px;border-radius:8px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a5f;font-size:12px;line-height:1.7"></div>
-            <div style="margin-top:9px;color:#64748b;font-size:11px;line-height:1.7">تنويه: Push هنا للشرح فقط وليس خدمة إشعارات فعلية. يجب فتح ملف التقويم الذي يتم تنزيله وتأكيد إضافته في تطبيق التقويم.</div>
+            <div style="margin-top:9px;color:#64748b;font-size:11px;line-height:1.7">تنويه: Push هنا للتوضيح فقط وليس خدمة إشعارات فعلية. يجب فتح ملف التقويم الذي يتم تنزيله وتأكيد إضافته في تطبيق التقويم.</div>
           </div>
         </details>
         <div class="csv-attempts" id="csv-attempts">
