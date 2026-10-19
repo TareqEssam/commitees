@@ -2198,7 +2198,7 @@
         </div>
         <div class="csv-field">
           <label>رقم السجل التجاري الموحد <span style="color:#dc2626">*</span> <span style="color:#64748b;font-weight:400">(15 رقم)</span></label>
-          <input type="text" id="csv-cr-number" placeholder="XXXXX-XXXXX-XXXXX" value="" inputmode="numeric" autocomplete="off" dir="ltr" style="text-align:left;letter-spacing:0.5px">
+          <input type="text" id="csv-cr-number" placeholder="12345-67890-12345" value="" inputmode="numeric" autocomplete="off" dir="ltr" style="text-align:left;letter-spacing:0.5px">
         </div>
         <div class="csv-field" id="csv-auditor-extra" style="display:${isAuditor ? 'block' : 'none'}">
           <label>مرجع مهني للمحاسب (اختياري)</label>
@@ -2242,17 +2242,22 @@
           </div>
         </div>
         <div id="csv-reminder-banner" style="display:none;margin:0 0 14px;padding:12px 14px;background:#eff6ff;border:1.5px solid #93c5fd;border-radius:10px;font-size:13px;color:#1e3a5f;line-height:1.65"></div>
-        <div class="csv-card" style="margin:0 0 16px;border:1.5px solid #bfdbfe;background:linear-gradient(135deg,#f8fbff,#f0fdfa)">
-          <h3 style="margin:0 0 6px">🔔 تذكيرى كل 30 يوماً </h3>
-          <div class="sub" style="margin:0 0 12px">أضف موعداً متكرراً إلى تقويم هاتفك أو كمبيوترك.</div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px">
-            <button type="button" class="csv-btn csv-btn-main" id="csv-calendar-reminder-btn">📅 إضافة تذكير إلى تقويم الجهاز</button>
-            <button type="button" class="csv-btn csv-btn-soft" id="csv-push-demo-btn">🔔 Push — معرفة دعم الجهاز وطريقة التفعيل</button>
+        <details class="csv-card" style="margin:0 0 12px;padding:0;border:1px solid #e2e8f0;background:#fff;border-radius:10px;overflow:hidden">
+          <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;color:#475569;font-size:12.5px;line-height:1.5;user-select:none">
+            <span style="font-weight:600">🔔 تذكير شهري اختياري</span>
+            <span style="color:#64748b;font-size:11.5px;white-space:nowrap">عرض الخيارات ▾</span>
+          </summary>
+          <div style="padding:0 12px 12px;border-top:1px solid #f1f5f9">
+            <div class="sub" style="margin:10px 0 12px;font-size:12px">أضف موعداً متكرراً إلى تقويم هاتفك أو كمبيوترك. هذا الخيار لا يحتاج إلى تشغيل خادم المنصة عند موعد التذكير.</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+              <button type="button" class="csv-btn csv-btn-main" id="csv-calendar-reminder-btn">📅 إضافة تذكير إلى تقويم الجهاز</button>
+              <button type="button" class="csv-btn csv-btn-soft" id="csv-push-demo-btn">🔔 معرفة دعم Push</button>
+            </div>
+            <div id="csv-calendar-status" role="status" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;font-size:12px;line-height:1.7"></div>
+            <div id="csv-push-help" role="status" style="display:none;margin-top:10px;padding:12px;border-radius:8px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a5f;font-size:12px;line-height:1.7"></div>
+            <div style="margin-top:9px;color:#64748b;font-size:11px;line-height:1.7">تنويه: Push هنا للشرح فقط وليس خدمة إشعارات فعلية. يجب فتح ملف التقويم الذي يتم تنزيله وتأكيد إضافته في تطبيق التقويم.</div>
           </div>
-          <div id="csv-calendar-status" role="status" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;font-size:12px;line-height:1.7"></div>
-          <div id="csv-push-help" role="status" style="display:none;margin-top:10px;padding:12px;border-radius:8px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a5f;font-size:12px;line-height:1.7"></div>
-          <div style="margin-top:9px;color:#64748b;font-size:11px;line-height:1.7">ملاحظة: زر Push توضيحي في هذه النسخة وليس خدمة Push فعلية. ملف التقويم يُنزّل أولاً ويجب على المستخدم تأكيد إضافته في تطبيق التقويم.</div>
-        </div>
+        </details>
         <div class="csv-attempts" id="csv-attempts">
           <span>محاولات الروابط المرفوضة المتبقية: <strong id="csv-attempts-left">5</strong></span>
           <span style="font-size:12px;opacity:.85">بعد 5 محاولات يُوقف الفحص مؤقتاً</span>
